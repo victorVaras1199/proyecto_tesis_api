@@ -1,0 +1,77 @@
+# Entornos virtuales
+venv/
+ENV/
+env/
+.venv/
+
+# Archivos de configuración del entorno
+*.env
+
+# Archivos de compilación
+*.pyc
+*.pyo
+__pycache__/
+
+# Directorios de logs
+logs/
+*.log
+
+# Archivos de bases de datos locales
+*.sqlite3
+
+# Directorios de herramientas
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+
+# Archivos de configuración del sistema operativo
+.DS_Store
+Thumbs.db
+
+# Archivos de paquetes
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+*.egg-info/
+.Python
+lib/
+lib64/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Carpetas de distribución
+dist/
+build/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Archivos de instalación
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Archivos de pruebas
+.coverage
+.tox/
+.nox/
+.cache
+nosetests.xml
+coverage.xml
+*,cover
+
+# Archivos de Jupyter Notebook
+.ipynb_checkpoints
+
+.vercel

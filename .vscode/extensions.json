@@ -1,0 +1,22 @@
+{
+	"recommendations": [
+		"bierner.emojisense",
+		"njpwerner.autodocstring",
+		"aaron-bond.better-comments",
+		"wraith13.bracket-lens",
+		"usernamehw.errorlens",
+		"NonSpicyBurrito.hoverlens",
+		"oderwat.indent-rainbow",
+		"VisualStudioExptTeam.vscodeintellicode",
+		"VisualStudioExptTeam.intellicode-api-usage-examples",
+		"VisualStudioExptTeam.vscodeintellicode-completions",
+		"ms-python.isort",
+		"Tyriar.lorem-ipsum",
+		"yzhang.markdown-all-in-one",
+		"christian-kohler.path-intellisense",
+		"ms-python.python",
+		"ms-python.debugpy",
+		"KevinRose.vsc-python-indent",
+		"shardulm94.trailing-spaces"
+	]
+}
