@@ -1,5 +1,4 @@
 import io
-
 import base64
 import cv2
 import imageio
@@ -8,14 +7,17 @@ import mediapipe as mp
 import numpy as np
 import os
 import tempfile
+import matplotlib.pyplot as plt
 
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
+from pyngrok import ngrok
 from ultralytics import YOLO
 
 from enums.http_methods import HttpMethods
 from enums.request_body import RequestBody
 from utils.process_landmarks import process_landmarks
+from IPython.display import Video, display
 
 app = Flask(__name__)
 CORS(app, resources = {
@@ -40,6 +42,20 @@ app.config["MODEL_PATH"] = MODEL_PATH
 
 mp_drawing = mp.solutions.drawing_utils
 mp_pose = mp.solutions.pose
+
+def calculate_angle(a, b, c):
+	"""Calculate the angle between three points (a, b, c)."""
+	a = np.array(a)  # Primer punto
+	b = np.array(b)  # Punto intermedio
+	c = np.array(c)  # Punto final
+
+	radians = np.arctan2(c[1] - b[1], c[0] - b[0]) - np.arctan2(a[1] - b[1], a[0] - b[0])
+	angle = np.abs(radians * 180.0 / np.pi)
+
+	if angle > 180.0:
+		angle = 360 - angle
+
+	return angle
 
 @app.route("/estimate-pose-image", methods=[HttpMethods.POST.value])
 def estimate_pose_image():
@@ -97,19 +113,32 @@ def estimate_pose_image():
 		results = pose.process(image_rgb)
 
 		if results.pose_landmarks is not None:
-			coords_and_angles = process_landmarks(results.pose_landmarks.landmark, mp_pose, image)
+			landmarks = results.pose_landmarks.landmark
 
-			image_yolo = cv2.imread(yolo_result_path)
+			# Obtener las coordenadas necesarias para el cálculo del ángulo
+			def get_coords(landmark):
+				return int(landmark.x * image.shape[1]), int(landmark.y * image.shape[0])
 
-			if (coords_and_angles["elbow"]["right"]["angle"] > 0.0):
-				cv2.putText(image_yolo, str(int(coords_and_angles["elbow"]["right"]["angle"])), coords_and_angles["elbow"]["right"]["coords"], cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2, cv2.LINE_AA)
+			shoulder_r = get_coords(landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER])
+			elbow_r = get_coords(landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW])
+			wrist_r = get_coords(landmarks[mp_pose.PoseLandmark.RIGHT_WRIST])
 
-			if (coords_and_angles["elbow"]["left"]["angle"] > 0.0):
-				cv2.putText(image_yolo, str(int(coords_and_angles["elbow"]["left"]["angle"])), coords_and_angles["elbow"]["left"]["coords"], cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2, cv2.LINE_AA)
-			# if (coords_and_angles["elbow"]["right"]["angle"] > 0.0 and coords_and_angles["elbow"]["left"]["angle"] > 0.0):
+			shoulder_l = get_coords(landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER])
+			elbow_l = get_coords(landmarks[mp_pose.PoseLandmark.LEFT_ELBOW])
+			wrist_l = get_coords(landmarks[mp_pose.PoseLandmark.LEFT_WRIST])
 
-			angles["elbow"]["right"] = int(coords_and_angles["elbow"]["right"]["angle"])
-			angles["elbow"]["left"] = int(coords_and_angles["elbow"]["left"]["angle"])
+			# Calcular ángulos
+			angle_r = calculate_angle(shoulder_r, elbow_r, wrist_r)
+			angle_l = calculate_angle(shoulder_l, elbow_l, wrist_l)
+
+			# Dibujar los ángulos en la imagen procesada por YOLO
+			cv2.putText(image_with_poses, str(int(angle_r)), elbow_r,
+						cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2, cv2.LINE_AA)
+			cv2.putText(image_with_poses, str(int(angle_l)), elbow_l,
+						cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2, cv2.LINE_AA)
+
+			angles["elbow"]["right"] = int(angle_r)
+			angles["elbow"]["left"] = int(angle_l)
 		else:
 			response = {
 				"error": "Person not found"
@@ -117,7 +146,7 @@ def estimate_pose_image():
 
 			return jsonify(response), 400
 
-	_, img_encoded = cv2.imencode(".jpg", image_yolo)
+	_, img_encoded = cv2.imencode(".jpg", image_with_poses)
 	img_bytes = io.BytesIO(img_encoded.tobytes())
 
 	img_base64 = base64.b64encode(img_bytes.getvalue()).decode('utf-8')
@@ -178,17 +207,48 @@ def estimate_pose_video():
 	output_path = os.path.join(VIDEOS_FOLDER, f"yolo_{file.filename}")
 	out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
 
-	while True:
-		ret, frame = video_capture.read()
+	with mp_pose.Pose(static_image_mode=False, min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
+		while True:
+			ret, frame = video_capture.read()
 
-		if not ret:
-			break
+			if not ret:
+				break
 
-		results = model(frame)  # Assuming model processes frame directly
+			# Procesar el frame con YOLO
+			yolo_results = model(frame)
+			processed_frame = yolo_results[0].plot()
 
-		processed_frame = results[0].plot()  # Assuming results include a method to plot
+			# Convertir el frame a RGB para MediaPipe
+			frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+			results_mp = pose.process(frame_rgb)
 
-		out.write(processed_frame)
+			if results_mp.pose_landmarks:
+				landmarks = results_mp.pose_landmarks.landmark
+
+				# Obtener las coordenadas necesarias para el cálculo del ángulo
+				def get_coords(landmark):
+					return int(landmark.x * frame_width), int(landmark.y * frame_height)
+
+				shoulder_r = get_coords(landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER])
+				elbow_r = get_coords(landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW])
+				wrist_r = get_coords(landmarks[mp_pose.PoseLandmark.RIGHT_WRIST])
+
+				shoulder_l = get_coords(landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER])
+				elbow_l = get_coords(landmarks[mp_pose.PoseLandmark.LEFT_ELBOW])
+				wrist_l = get_coords(landmarks[mp_pose.PoseLandmark.LEFT_WRIST])
+
+				# Calcular ángulos
+				angle_r = calculate_angle(shoulder_r, elbow_r, wrist_r)
+				angle_l = calculate_angle(shoulder_l, elbow_l, wrist_l)
+
+				# Dibujar los ángulos en el frame procesado por YOLO
+				cv2.putText(processed_frame, str(int(angle_r)), elbow_r,
+							cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2, cv2.LINE_AA)
+				cv2.putText(processed_frame, str(int(angle_l)), elbow_l,
+							cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2, cv2.LINE_AA)
+
+			# Escribir el frame procesado en el video de salida
+			out.write(processed_frame)
 
 	video_capture.release()
 	out.release()
@@ -210,4 +270,7 @@ def estimate_pose_video():
 	return jsonify(response), 200
 
 if __name__ == "__main__":
-	app.run(debug=True)
+	url = ngrok.connect(5000)
+	print(f"Servidor en ejecución en: {url}")
+
+	app.run()
